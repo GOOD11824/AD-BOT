@@ -1230,18 +1230,16 @@ class AdvancedBot(BaseBot):
             logger.error(f"خطا در پردازش تیپ از {sender.username} به {receiver.username}: {e}")
             await self.highrise.chat(f"خطا در پردازش تیپ از @{sender.username} به @{receiver.username}: {e}")
 
-        async def start_dance(self, user: User, emote: str):
+    async def start_dance(self, user: User, emote: str):
         username = user.username.lower()
         await self.stop_dance(user)
         self.user_dances[username] = emote
         duration = self.emote_durations.get(emote, 7.5)
 
-        async def dance_loop():
+    async def dance_loop():
             try:
                 while self.user_dances.get(username) == emote:
-                    # استفاده از send_animation به همراه user.id برای سازگاری کامل با روم های 3D
                     await self.highrise.send_animation(emote, user.id)
-                    # اضافه کردن ۱ ثانیه زمان اضافه به duration برای جلوگیری از اسپم و قفل شدن سرور روم 3D
                     await sleep(duration + 1.0)
             except CancelledError:
                 logger.info(f"وظیفه رقص برای {username} لغو شد.")

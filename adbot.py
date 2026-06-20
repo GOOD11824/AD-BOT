@@ -1239,7 +1239,7 @@ class AdvancedBot(BaseBot):
         async def dance_loop():
             try:
                 while self.user_dances.get(username) == emote:
-                    await self.highrise.send_emote(emote, user.id)
+                    await self.highrise.send_animation(emote, user.id)
                     await sleep(duration)
             except CancelledError:
                 logger.info(f"وظیفه رقص برای {username} لغو شد.")

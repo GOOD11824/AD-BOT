@@ -189,8 +189,8 @@ class AdvancedBot(BaseBot):
             "105": "emoji-pray",
             "106": "emoji-poop",
             "107": "emoji-naughty",
-            "118": "emoji-mind-blown",
-            "119": "emoji-lying",
+            "108": "emoji-mind-blown",
+            "109": "emoji-lying",
             "110": "emoji-halo",
             "111": "emoji-hadoken",
             "112": "emoji-give-up",
@@ -449,7 +449,7 @@ class AdvancedBot(BaseBot):
             "۱۴۴": "idle-toilet",
             "۱۴۵": "emote-attention",
             "۱۴۶": "sit-open",
-            "۱۳۷": "emote-astronaut",
+            "۱۴۷": "emote-astronaut",
             "۱۴۸": "dance-zombie",
             "۱۴۹": "emoji-ghost",
             "۱۵۰": "emote-hearteyes",
@@ -2318,17 +2318,14 @@ class AdvancedBot(BaseBot):
                 await self.highrise.chat("لطفاً شماره دنس را هم وارد کنید. مثال: !party all 1")
                 return
             dance_input = parts[2]
-        # حل مشکل پیدا کردن دنس‌ها بدون ارور دادن
-        available_emotes = getattr(self, "emotes", getattr(self, "emote_mapping", {}))
-        if dance_input not in self.emote_mapping:
-            await self.highrise.chat("شماره danc معتبر نیست!")
-            return
-        emote = self.emote_mapping[dance_input]
-        duration = self.emote_durations.get(emote, 7.5)
+            if dance_input not in self.emote_mapping:
+                await self.highrise.chat("شماره دنس معتبر نیست!")
+                return
+            emote = self.emote_mapping[dance_input]
+            duration = self.emote_durations.get(emote, 7.5)
 
-        room_users = await self.highrise.get_room_users()
-            
-        # حل مشکل پیدا کردن دنس‌ها بدون ارور دادن
+            room_users = await self.highrise.get_room_users()
+
             try:
                 bot_info = await self.highrise.get_my_info()
                 bot_id = bot_info.id
@@ -2337,33 +2334,31 @@ class AdvancedBot(BaseBot):
 
             count = 0
             for target_user, _ in room_users.content:
-                # اگر کاربر خودِ ربات بود ردش کن تا خودش دنس نزنه
                 if bot_id and target_user.id == bot_id:
                     continue
-                
+
                 t_username = target_user.username.lower()
                 if t_username in self.dance_tasks:
                     self.dance_tasks[t_username].cancel()
                 self.party_dances[t_username] = (emote, True)
-                
-                async def party_loop(u=target_user):
+
+                async def party_loop(u=target_user, _emote=emote, _duration=duration):
                     u_username = u.username.lower()
                     try:
-                        while u_username in self.party_dances and self.party_dances[u_username][0] == emote:
-                            # تغییر به send_animation برای سازگاری با روم سه‌بعدی
-                            await self.highrise.send_animation(str(emote), u.id)
-                            await sleep(duration + 1.5)
+                        while u_username in self.party_dances and self.party_dances[u_username][0] == _emote:
+                            await self.highrise.send_animation(str(_emote), u.id)
+                            await sleep(_duration + 1.5)
                     except CancelledError:
                         pass
                     except Exception as e:
                         logger.error(f"خطا در رقص همگانی برای {u_username}: {e}")
-                
+
                 self.dance_tasks[t_username] = create_task(party_loop())
                 count += 1
-            
+
             await self.highrise.chat(f"مهمونی شروع شد! رقص شماره {dance_input} روی {count} نفر فعال شد. 🎉")
             return
-            
+
         if action in self.emote_mapping:
             if len(parts) < 3:
                 await self.highrise.chat("لطفاً نام کاربری را وارد کنید. مثال: !party 1 @username")
@@ -2388,8 +2383,9 @@ class AdvancedBot(BaseBot):
                     try:
                         while target_username in self.party_dances and self.party_dances[target_username][0] == emote:
                             await self.highrise.send_animation(str(emote), target_user.id)
+                            await sleep(duration + 1.5)
                     except CancelledError:
-                            pass
+                        pass
                 
                 self.dance_tasks[target_username] = create_task(single_party_loop())
                 await self.highrise.chat(f"رقص اجباری شماره {action} روی @{target_user.username} فعال شد!")

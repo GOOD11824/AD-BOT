@@ -1239,7 +1239,7 @@ class AdvancedBot(BaseBot):
     async def dance_loop():
         try:
             while self.user_dances.get(username) == emote:
-                await self.highrise.send_animation(emote, user.id)
+                await self.highrise.send_animation(emote, user.id))
                 await sleep(duration + 1.5)
         except CancelledError:
             logger.info(f"وظیفه رقص برای {username} لغو شد.")
@@ -2295,87 +2295,105 @@ class AdvancedBot(BaseBot):
     async def cmd_party(self, user: User, message: str):
         if user.username.lower() not in self.config["admin_usernames"]:
             await self.highrise.chat(self.get_message("no_permission"))
-            logger.info(f"کاربر {user.username} دسترسی لازم برای اجرای !party را ندارد.")
+            return
+        parts = message.split()
+        if len(parts) < 2:
+            await self.highrise.chat("فرمت اشتباه است. مثال: !party 1 یا !party all 1 یا !party stop")
+            return
+        
+        action = parts[1].lower()
+        
+        if action == "stop":
+            for u_name in list(self.party_dances.keys()):
+                self.party_dances.pop(u_name, None)
+                if u_name in self.dance_tasks:
+                    self.dance_tasks[u_name].cancel()
+                    self.dance_tasks.pop(u_name, None)
+            await self.highrise.chat("تمامی رقص‌های اجباری متوقف شدند.")
+            logger.info(f"رقص همگانی توسط {user.username} متوقف شد.")
             return
 
-        parts = message.lower().split()
-        if len(parts) != 3 or (not parts[1].startswith("@") and parts[1] != "all") or not parts[2].isdigit():
-            await self.highrise.chat(self.get_message("invalid_format", format="!party @username عدد یا !party all عدد"))
-            logger.info(f"فرمت نادرست برای دستور !party توسط {user.username} وارد شد.")
-            return
-
-        dance_number = parts[2]
-        if dance_number not in self.emotes:
-            await self.highrise.chat(f"رقص شماره {dance_number} وجود ندارد!")
-            logger.info(f"رقص شماره {dance_number} توسط {user.username} نامعتبر است.")
-            return
-
-        emote = self.emotes[dance_number]
-        duration = self.emote_durations.get(emote, 7.5)
-
-        if parts[1] == "all":
-            try:
-                successful_dances = 0
-                for username, target_user in self.active_users.items():
-                    if target_user.id == self.user_id:
-                        continue
-                    if username not in self.active_users:
-                        logger.info(f"کاربر {username} در حین اجرای رقص آفلاین شد.")
-                        continue
-                    await self.stop_dance(target_user)  # توقف رقص قبلی
-                    self.party_dances[username] = (emote, False)  # False نشان‌دهنده رقص قابل توقف توسط کاربر
-                    async def dance_loop():
-                        try:
-                            while username in self.party_dances and self.party_dances[username][0] == emote:
-                                if username not in self.active_users:
-                                    self.party_dances.pop(username, None)
-                                    logger.info(f"کاربر {username} آفلاین شد، رقص متوقف شد.")
-                                    break
-                                await self.highrise.send_emote(emote, target_user.id)
-                                await sleep(duration)
-                        except CancelledError:
-                            logger.info(f"وظیفه رقص برای {username} لغو شد.")
-                        except Exception as e:
-                            logger.error(f"خطا در حلقه رقص برای {username}: {e}")
-                    task = create_task(dance_loop())
-                    self.dance_tasks[username] = task
-                    successful_dances += 1
-                    await sleep(0.5)
-                await self.highrise.chat(self.get_message("party_all_success", dance_number=dance_number, count=successful_dances))
-                logger.info(f"رقص شماره {dance_number} برای {successful_dances} کاربر توسط {user.username} فعال شد.")
-            except Exception as e:
-                await self.highrise.chat(f"خطا در اجرای رقص برای همه: {str(e)}")
-                logger.error(f"خطا در cmd_party all: {str(e)}")
-        else:
-            target_username = parts[1][1:].lower()
-            target_user = self.active_users.get(target_username)
-            if not target_user:
-                await self.highrise.chat(self.get_message("user_not_found", username=target_username))
-                logger.info(f"کاربر هدف {target_username} توسط {user.username} پیدا نشد.")
+        if action == "all":
+            if len(parts) < 3:
+                await self.highrise.chat("لطفاً شماره دنس را هم وارد کنید. مثال: !party all 1")
                 return
+            dance_input = parts[2]
+            if dance_input not in self.emote_mapping:
+                await self.highrise.chat("شماره danc معتبر نیست!")
+                return
+            emote = self.emote_mapping[dance_input]
+            duration = self.emote_durations.get(emote, 7.5)
+            
+            room_users = await self.highrise.get_room_users()
+            
+            # پیدا کردن آیدی خود ربات برای فیلتر کردن
             try:
-                await self.stop_dance(target_user)  # توقف رقص قبلی
-                self.party_dances[target_username] = (emote, True)  # True نشان‌دهنده رقص غیرقابل توقف توسط کاربر
-                async def dance_loop():
+                bot_info = await self.highrise.get_my_info()
+                bot_id = bot_info.id
+            except Exception:
+                bot_id = None
+
+            count = 0
+            for target_user, _ in room_users.content:
+                # اگر کاربر خودِ ربات بود ردش کن تا خودش دنس نزنه
+                if bot_id and target_user.id == bot_id:
+                    continue
+                
+                t_username = target_user.username.lower()
+                if t_username in self.dance_tasks:
+                    self.dance_tasks[t_username].cancel()
+                self.party_dances[t_username] = (emote, True)
+                
+                async def party_loop(u=target_user):
+                    u_username = u.username.lower()
+                    try:
+                        while u_username in self.party_dances and self.party_dances[u_username][0] == emote:
+                            # تغییر به send_animation برای سازگاری با روم سه‌بعدی
+                            await self.highrise.send_animation(emote, u.id)
+                            await sleep(duration + 1.5)
+                    except CancelledError:
+                        pass
+                    except Exception as e:
+                        logger.error(f"خطا در رقص همگانی برای {u_username}: {e}")
+                
+                self.dance_tasks[t_username] = create_task(party_loop())
+                count += 1
+            
+            await self.highrise.chat(f"مهمونی شروع شد! رقص شماره {dance_input} روی {count} نفر فعال شد. 🎉")
+            return
+
+        if action in self.emote_mapping:
+            if len(parts) < 3:
+                await self.highrise.chat("لطفاً نام کاربری را وارد کنید. مثال: !party 1 @username")
+                return
+            target_username = parts[2].replace("@", "").lower()
+            emote = self.emote_mapping[action]
+            duration = self.emote_durations.get(emote, 7.5)
+            
+            room_users = await self.highrise.get_room_users()
+            target_user = None
+            for u, _ in room_users.content:
+                if u.username.lower() == target_username:
+                    target_user = u
+                    break
+            
+            if target_user:
+                if target_username in self.dance_tasks:
+                    self.dance_tasks[target_username].cancel()
+                self.party_dances[target_username] = (emote, True)
+                
+                async def single_party_loop():
                     try:
                         while target_username in self.party_dances and self.party_dances[target_username][0] == emote:
-                            if target_username not in self.active_users:
-                                self.party_dances.pop(target_username, None)
-                                logger.info(f"کاربر {target_username} آفلاین شد، رقص متوقف شد.")
-                                break
-                            await self.highrise.send_emote(emote, target_user.id)
-                            await sleep(duration)
+                            await self.highrise.send_animation(emote, target_user.id)
+                            await sleep(duration + 1.5)
                     except CancelledError:
-                        logger.info(f"وظیفه رقص برای {target_username} لغو شد.")
-                    except Exception as e:
-                        logger.error(f"خطا در حلقه رقص برای {target_username}: {e}")
-                task = create_task(dance_loop())
-                self.dance_tasks[target_username] = task
-                await self.highrise.chat(self.get_message("party_success", dance_number=dance_number, username=target_username))
-                logger.info(f"رقص شماره {dance_number} برای {target_username} توسط {user.username} فعال شد.")
-            except Exception as e:
-                await self.highrise.chat(f"خطا در اجرای رقص برای @{target_username}: {str(e)}")
-                logger.error(f"خطا در cmd_party برای {target_username}: {str(e)}")
+                        pass
+                
+                self.dance_tasks[target_username] = create_task(single_party_loop())
+                await self.highrise.chat(f"رقص اجباری شماره {action} روی @{target_user.username} فعال شد!")
+            else:
+                await self.highrise.chat(f"کاربر {target_username} در اتاق پیدا نشد.")
 
     async def cmd_partys(self, user: User, message: str):
         if user.username.lower() not in self.config["admin_usernames"]:

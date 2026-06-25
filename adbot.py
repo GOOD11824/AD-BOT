@@ -49,6 +49,7 @@ class AdvancedBot(BaseBot):
         self.user_id = None
         self.announcement_task = None
         self.score_update_task = None
+        self.loopchat_task = None
         self.frozen_users = {}
         self.party_dances = {}
         self.commands = {
@@ -81,8 +82,8 @@ class AdvancedBot(BaseBot):
             "!unfreeze": self.cmd_unfreeze,
             "!party": self.cmd_party,
             "!partys": self.cmd_partys,
-            "!changeroom": self.cmd_changeroom,
-            "!emotebot": self.cmd_emotebot
+            "!emotebot": self.cmd_emotebot,
+            "!loopchat": self.cmd_loopchat
         }
         self.emotes = {
             "1": "idle_zombie",
@@ -307,6 +308,7 @@ class AdvancedBot(BaseBot):
             "220": "emote-salute",
             "221": "idle-floorsleeping2",
             "222": "dance-floss",
+            "223": "emote-hanging",
             "۱": "idle_zombie",
             "۲": "idle_layingdown2",
             "۳": "idle_layingdown",
@@ -529,6 +531,7 @@ class AdvancedBot(BaseBot):
             "۲۲۰": "emote-salute",
             "۲۲۱": "idle-floorsleeping2",
             "۲۲۲": "dance-floss",
+            "۲۲۳": "emote-hanging",
             "zombie": "idle_zombie",
             "relaxed": "idle_layingdown2",
             "attentive": "idle_layingdown",
@@ -750,7 +753,8 @@ class AdvancedBot(BaseBot):
             "cutesalute": "emote-cutesalute",
             "relaxing": "idle-floorsleeping2",
             "attention": "emote-salute",
-            "floss": "dance-floss"
+            "floss": "dance-floss",
+            "hanging": "emote-hanging"
             
         }
 
@@ -975,7 +979,8 @@ class AdvancedBot(BaseBot):
             "dance-tiktok11": 15.0,
             "emote-cutesalute": 15.0,
             "emote-salute": 15.0,
-            "dance-floss": 11.0
+            "dance-floss": 11.0,
+            "emote-hanging": 6.0
         }
 
     def load_config(self):
@@ -2424,26 +2429,38 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat(f"خطا در توقف رقص برای @{target_username}: {str(e)}")
             logger.error(f"خطا در cmd_partys برای {target_username}: {str(e)}")
 
-    async def cmd_changeroom(self, user: User, parts: list):
+    async def cmd_loopchat(self, user: User, parts: list):
         admins_lower = [admin.lower() for admin in self.config.get("admin_usernames", [])]
         if user.username.lower() not in admins_lower:
-            await self.highrise.chat("❌ شما دسترسی لازم برای تغییر روم ربات را ندارید!")
+            await self.highrise.chat("❌ این دستور مخصوص ادمین‌های ربات است!")
             return
-        
+
         if len(parts) < 2:
-            await self.highrise.chat("⚠️ فرمت اشتباه! از این فرمت استفاده کنید: !changeroom ID_ROOM")
+            await self.highrise.chat("⚠️ فرمت اشتباه! فرمت صحیح: !loopchat پیام شما")
             return
-            
-        new_room_id = parts[1].strip()
-        await self.highrise.chat(f"🔄 در حال جابه‌جایی مستقیم به روم جدید... لطفا چند ثانیه صبر کنید.")
-        logger.info(f"درخواست تغییر دستی روم به {new_room_id} توسط {user.username}")
+
+        # تمام متن بعد از !loopchat رو بگیر
+        loop_message = " ".join(parts[1:])
         
-        # بروزرسانی آیدی در کل محیط اجرای ربات
-        os.environ["ROOM_ID"] = new_room_id
+        # اگر loopchat فعلاً در حال اجراست، آن را لغو کن
+        if hasattr(self, 'loopchat_task') and self.loopchat_task:
+            self.loopchat_task.cancel()
         
-        # لغو تسک‌ها و قطع اتصال فوری برای اجرای مجدد در روم جدید
-        await self.cleanup_tasks()
-        raise ConnectionResetError("تغییر روم دستی از درون بازی؛ راه اندازی مجدد اتصال...")
+        await self.highrise.chat(f"✅ حالت تکرار فعال شد! پیام: {loop_message}")
+        logger.info(f"loopchat فعال شد توسط {user.username}: {loop_message}")
+        
+        # شروع حلقه ارسال پیام
+        async def loopchat_loop():
+            try:
+                while True:
+                    await self.highrise.chat(loop_message)
+                    await sleep(10.0)  # هر ۱۰ ثانیه تکرار
+            except CancelledError:
+                logger.info("loopchat لغو شد.")
+            except Exception as e:
+                logger.error(f"خطا در loopchat: {e}")
+        
+        self.loopchat_task = create_task(loopchat_loop())
 
     async def cmd_emotebot(self, user: User, parts: list):
         admins_lower = [admin.lower() for admin in self.config.get("admin_usernames", [])]

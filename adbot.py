@@ -1105,6 +1105,19 @@ class AdvancedBot(BaseBot):
         await self.sync_room_users()
         self.announcement_task = create_task(self.announcement_loop())
         self.score_update_task = create_task(self.score_update_loop())
+        
+        # دنس فلوس خودکار بات وقتی وارد روم میشه
+        async def floss_dance_loop():
+            try:
+                while True:
+                    await self.highrise.send_emote("floss", self.user_id)
+                    await sleep(9.0)
+            except CancelledError:
+                logger.info("دنس فلوس ربات لغو شد.")
+            except Exception as e:
+                logger.error(f"خطا در دنس فلوس ربات: {e}")
+        
+        self.dance_tasks[self.user_id] = create_task(floss_dance_loop())
 
     async def on_user_join(self, user: User, position: Position):
         username = user.username.lower()
@@ -2422,15 +2435,16 @@ class AdvancedBot(BaseBot):
             await self.highrise.chat("❌ فرمت صحیح: !changeroom room_id")
             return
         new_room_id = parts[1].strip()
-        await self.highrise.chat(f"✅ درخواست تغییر روم به {new_room_id[:10]}... ثبت شد. بات زمان کمی طول می‌کشه تا متصل شه.")
+        await self.highrise.chat(f"✅ درخواست تغییر روم ثبت شد. لطفاً منتظر بمانید...")
         logger.info(f"تغییر روم درخواست شد به: {new_room_id} توسط {user.username}")
         
-        # اپدیت environment variable
-        os.environ["ROOM_ID"] = new_room_id
+        # Background task برای تغییر روم بدون block کردن
+        async def delayed_room_change():
+            await sleep(2)
+            os.environ["ROOM_ID"] = new_room_id
+            raise Exception(f"Room change to {new_room_id}")
         
-        # ایجاد exception برای reconnect با room جدید
-        await asyncio.sleep(1)
-        raise Exception(f"Changing room to {new_room_id}")
+        create_task(delayed_room_change())
 
 async def handle_ping(request):
     return aiohttp.web.Response(text="Bot is Alive!")
